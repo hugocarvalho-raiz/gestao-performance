@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Plus,
   Calendar,
@@ -19,25 +19,29 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 import { formatDate, getStatusColor, getStatusLabel } from '@/lib/utils';
 
-// Dados mockados
-const mockTarefas = [
-  { id: '1', titulo: 'Revisar material didático de matemática', descricao: '', prioridade: 'alta', assignee: 'Maria Silva', prazo: '2026-06-05', status: 'pendente', projeto_id: '1' },
-  { id: '2', titulo: 'Preparar apresentação para reunião', descricao: '', prioridade: 'alta', assignee: 'João Santos', prazo: '2026-06-05', status: 'em_andamento', projeto_id: null },
-  { id: '3', titulo: 'Enviar relatório mensal', descricao: '', prioridade: 'media', assignee: 'Ana Costa', prazo: '2026-06-06', status: 'pendente', projeto_id: null },
-  { id: '4', titulo: 'Revisar conteúdo do curso', descricao: '', prioridade: 'media', assignee: 'Maria Silva', prazo: '2026-06-07', status: 'pendente', projeto_id: '1' },
-  { id: '5', titulo: 'Atualizar planilha de métricas', descricao: '', prioridade: 'baixa', assignee: 'João Santos', prazo: '2026-06-10', status: 'pendente', projeto_id: null },
-];
+interface Tarefa {
+  id: string;
+  titulo: string;
+  descricao: string;
+  prioridade: string;
+  assignee: string;
+  prazo: string;
+  status: string;
+}
 
-const mockEventos = [
-  { id: '1', titulo: 'Reunião de planejamento semanal', descricao: '', data_inicio: '2026-06-05T09:00:00', data_fim: '2026-06-05T10:00:00', tipo: 'reuniao' },
-  { id: '2', titulo: 'Deadline: Entrega do projeto X', descricao: '', data_inicio: '2026-06-05T14:00:00', data_fim: '2026-06-05T14:00:00', tipo: 'deadline' },
-  { id: '3', titulo: 'Workshop de capacitação', descricao: '', data_inicio: '2026-06-05T15:00:00', data_fim: '2026-06-05T17:00:00', tipo: 'evento' },
-  { id: '4', titulo: 'Revisão de entrega', descricao: '', data_inicio: '2026-06-06T10:00:00', data_fim: '2026-06-06T11:00:00', tipo: 'reuniao' },
-  { id: '5', titulo: 'Sessão de brainstorming', descricao: '', data_inicio: '2026-06-07T14:00:00', data_fim: '2026-06-07T16:00:00', tipo: 'evento' },
-];
+interface Evento {
+  id: string;
+  titulo: string;
+  descricao: string;
+  data_inicio: string;
+  data_fim: string;
+  tipo: string;
+}
 
 const mockEquipe = ['Maria Silva', 'João Santos', 'Ana Costa', 'Pedro Oliveira'];
 
@@ -68,12 +72,33 @@ function getDiasSemana() {
 }
 
 export default function RotinaPage() {
-  const [tarefas, setTarefas] = useState(mockTarefas);
-  const [eventos, setEventos] = useState(mockEventos);
+  const [tarefas, setTarefas] = useState<Tarefa[]>([]);
+  const [eventos, setEventos] = useState<Evento[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isTarefaModalOpen, setIsTarefaModalOpen] = useState(false);
   const [isEventoModalOpen, setIsEventoModalOpen] = useState(false);
   const [filtro, setFiltro] = useState('todas');
   const [semanaAtual, setSemanaAtual] = useState(new Date());
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [tarefasRes, eventosRes] = await Promise.all([
+          supabase.from('tarefas').select('*').order('prazo', { ascending: true }),
+          supabase.from('eventos').select('*').order('data_inicio', { ascending: true }),
+        ]);
+
+        setTarefas(tarefasRes.data || []);
+        setEventos(eventosRes.data || []);
+      } catch (error) {
+        console.error('Erro ao buscar dados:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
+  }, []);
 
   const tarefasPendentes = tarefas.filter(t => t.status !== 'concluida' && t.status !== 'cancelada');
   const tarefasUrgentes = tarefasPendentes.filter(t => t.prioridade === 'alta' || t.prioridade === 'urgente');
@@ -92,6 +117,14 @@ export default function RotinaPage() {
   const formatarHora = (data: string) => {
     return new Date(data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -163,7 +196,7 @@ export default function RotinaPage() {
         <CardContent>
           <div className="grid grid-cols-7 gap-2">
             {diasSemana.map((dia, index) => {
-              const eventosDoDia = mockEventos.filter(e =>
+              const eventosDoDia = eventos.filter(e =>
                 new Date(e.data_inicio).toDateString() === dia.toDateString()
               );
               const tarefasDoDia = tarefasPendentes.filter(t =>
@@ -200,7 +233,7 @@ export default function RotinaPage() {
                             : 'bg-green-100 text-green-700'
                         }`}
                       >
-                        {formatarHora(evento.data_inicio)} {evento.titulo}
+                        {formatarHora(evento.data_inicio)} {evento.titulo.substring(0, 15)}...
                       </div>
                     ))}
                     {eventosDoDia.length > 2 && (
@@ -263,76 +296,73 @@ export default function RotinaPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {tarefasFiltradas.map((tarefa) => {
-                const isVencida = new Date(tarefa.prazo) < new Date() && tarefa.status !== 'concluida';
-                return (
-                  <div
-                    key={tarefa.id}
-                    className={`flex items-start gap-3 rounded-lg border p-3 ${
-                      isVencida ? 'border-red-200 bg-red-50/50' : 'border-gray-200'
-                    }`}
-                  >
-                    <button
-                      className="mt-0.5"
-                      onClick={() => {
-                        setTarefas(tarefas.map(t =>
-                          t.id === tarefa.id
-                            ? { ...t, status: t.status === 'concluida' ? 'pendente' : 'concluida' }
-                            : t
-                        ));
-                      }}
+            {tarefasFiltradas.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">Nenhuma tarefa encontrada.</p>
+            ) : (
+              <div className="space-y-3">
+                {tarefasFiltradas.map((tarefa) => {
+                  const isVencida = new Date(tarefa.prazo) < new Date() && tarefa.status !== 'concluida';
+                  return (
+                    <div
+                      key={tarefa.id}
+                      className={`flex items-start gap-3 rounded-lg border p-3 ${
+                        isVencida ? 'border-red-200 bg-red-50/50' : 'border-gray-200'
+                      }`}
                     >
-                      {tarefa.status === 'concluida' ? (
-                        <CheckCircle2 className="h-5 w-5 text-green-500" />
-                      ) : (
-                        <Circle className="h-5 w-5 text-gray-300 hover:text-gray-400" />
-                      )}
-                    </button>
-                    <div className="flex-1">
-                      <p className={`font-medium ${tarefa.status === 'concluida' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
-                        {tarefa.titulo}
-                      </p>
-                      <div className="mt-1 flex items-center gap-2">
-                        <Badge
-                          variant={
-                            tarefa.prioridade === 'alta' || tarefa.prioridade === 'urgente'
-                              ? 'danger'
-                              : tarefa.prioridade === 'media'
-                              ? 'warning'
-                              : 'default'
-                          }
-                        >
-                          {tarefa.prioridade}
-                        </Badge>
-                        <span className="text-xs text-gray-500">
-                          {formatDate(tarefa.prazo)}
-                        </span>
-                        <span className="text-xs text-gray-400">• {tarefa.assignee}</span>
-                        {isVencida && (
-                          <Badge variant="danger" className="flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3" />
-                            Vencida
-                          </Badge>
+                      <button className="mt-0.5">
+                        {tarefa.status === 'concluida' ? (
+                          <CheckCircle2 className="h-5 w-5 text-green-500" />
+                        ) : (
+                          <Circle className="h-5 w-5 text-gray-300 hover:text-gray-400" />
                         )}
+                      </button>
+                      <div className="flex-1">
+                        <p className={`font-medium ${tarefa.status === 'concluida' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                          {tarefa.titulo}
+                        </p>
+                        <div className="mt-1 flex items-center gap-2">
+                          <Badge
+                            variant={
+                              tarefa.prioridade === 'alta' || tarefa.prioridade === 'urgente'
+                                ? 'danger'
+                                : tarefa.prioridade === 'media'
+                                ? 'warning'
+                                : 'default'
+                            }
+                          >
+                            {tarefa.prioridade}
+                          </Badge>
+                          <span className="text-xs text-gray-500">
+                            {formatDate(tarefa.prazo)}
+                          </span>
+                          {tarefa.assignee && (
+                            <span className="text-xs text-gray-400">• {tarefa.assignee}</span>
+                          )}
+                          {isVencida && (
+                            <Badge variant="danger" className="flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              Vencida
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon">
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="text-red-600 hover:text-red-700">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon">
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="text-red-600 hover:text-red-700">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Eventos do Dia */}
+        {/* Eventos */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -341,38 +371,42 @@ export default function RotinaPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {mockEventos.map((evento) => (
-                <div
-                  key={evento.id}
-                  className="flex items-center gap-4 rounded-lg border border-gray-200 p-3"
-                >
-                  <div className="flex h-12 w-12 flex-col items-center justify-center rounded-lg bg-indigo-50">
-                    <span className="text-sm font-bold text-indigo-600">
-                      {formatarHora(evento.data_inicio)}
-                    </span>
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">{evento.titulo}</p>
-                    <div className="mt-1 flex items-center gap-2">
-                      <Badge
-                        variant={
-                          evento.tipo === 'reuniao' ? 'info' : evento.tipo === 'deadline' ? 'danger' : 'success'
-                        }
-                      >
-                        {evento.tipo}
-                      </Badge>
-                      <span className="text-xs text-gray-400">
-                        {formatarHora(evento.data_inicio)} - {formatarHora(evento.data_fim)}
+            {eventos.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">Nenhum evento encontrado.</p>
+            ) : (
+              <div className="space-y-3">
+                {eventos.map((evento) => (
+                  <div
+                    key={evento.id}
+                    className="flex items-center gap-4 rounded-lg border border-gray-200 p-3"
+                  >
+                    <div className="flex h-12 w-12 flex-col items-center justify-center rounded-lg bg-indigo-50">
+                      <span className="text-sm font-bold text-indigo-600">
+                        {formatarHora(evento.data_inicio)}
                       </span>
                     </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">{evento.titulo}</p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <Badge
+                          variant={
+                            evento.tipo === 'reuniao' ? 'info' : evento.tipo === 'deadline' ? 'danger' : 'success'
+                          }
+                        >
+                          {evento.tipo}
+                        </Badge>
+                        <span className="text-xs text-gray-400">
+                          {formatarHora(evento.data_inicio)} - {formatarHora(evento.data_fim)}
+                        </span>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon">
+                      <Edit2 className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <Button variant="ghost" size="icon">
-                    <Edit2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
